@@ -1,0 +1,4 @@
+El programa se inició correctamente.
+Error cargando los iconos de los botones: setIcon(self, icon: QIcon): argument 1 has unexpected type 'QPixmap'
+El programa se inició correctamente.
+Error cargando los iconos de los botones: setIcon(self, icon: QIcon): argument 1 has unexpected type 'QPixmap'
