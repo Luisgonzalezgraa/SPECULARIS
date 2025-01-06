@@ -6,9 +6,16 @@ from models.pose_model import PoseModel  # Importar el modelo de poses
 
 
 class PoseController:
-    def __init__(self, polera_path):
+    def __init__(self, polera_paths):
         self.pose_model = PoseModel()  # Instanciar el modelo de pose
-        self.polera = cv2.imread(polera_path, cv2.IMREAD_UNCHANGED)  # Cargar la imagen de la polera
+        self.poleras = [cv2.imread(path, cv2.IMREAD_UNCHANGED) for path in polera_paths]  # Cargar las imágenes de ropa
+        self.current_polera_index = 0  # Índice actual de la polera a mostrar
+
+    def change_polera(self):
+        """
+        Cambia la imagen de la polera al siguiente elemento en la lista.
+        """
+        self.current_polera_index = (self.current_polera_index + 1) % len(self.poleras)  # Circular
 
     def overlay_clothing(self, frame, landmarks):
         """
@@ -29,19 +36,18 @@ class PoseController:
             nose_px = (int(nose.x * w), int(nose.y * h))
 
             # Calcular el ancho de la polera basado en los hombros y un margen
-            width = int(np.linalg.norm(np.array(right_shoulder_px) - np.array(left_shoulder_px))) + 100  # Margen extra
+            width = int(np.linalg.norm(np.array(right_shoulder_px) - np.array(left_shoulder_px))) + 120  # Margen extra
 
             # Calcular el alto de la polera desde la nariz hasta la cadera
             height = int(np.linalg.norm(np.array(left_hip_px) - np.array(nose_px))) + 20  # Margen extra
 
-            # Redimensionar la polera
-            resized_polera = cv2.resize(self.polera, (width, height))
+            # Redimensionar la polera actual
+            resized_polera = cv2.resize(self.poleras[self.current_polera_index], (width, height))
 
             # Superponer la polera en el torso
-            x_min = min(left_shoulder_px[0], right_shoulder_px[0]) - 50  # Ajustar horizontalmente para centrar
+            x_min = min(left_shoulder_px[0], right_shoulder_px[0]) - 60  # Ajustar horizontalmente para centrar
             y_min = nose_px[1] + 20  # Comenzar desde el cuello
             self.overlay_image(frame, resized_polera, x_min, y_min)
-
 
     def overlay_image(self, frame, overlay, x, y):
         """
@@ -55,20 +61,10 @@ class PoseController:
                 alpha = overlay[i, j, 3] / 255.0  # Canal alfa
                 frame[y + i, x + j] = alpha * overlay[i, j, :3] + (1 - alpha) * frame[y + i, x + j]
 
-    def draw_landmarks_with_labels(self, frame, landmarks):
-        """
-        Dibuja los puntos clave en el frame junto con sus etiquetas.
-        """
-        h, w, _ = frame.shape
-        for idx, landmark in enumerate(landmarks.landmark):
-            # Convertir las coordenadas normalizadas a píxeles
-            x, y = int(landmark.x * w), int(landmark.y * h)
-            cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)  # Dibujar un punto
-            cv2.putText(frame, str(idx), (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)  # Etiqueta
-
     def start_camera(self):
         """
-        Inicia la cámara y muestra detecciones de pose con esqueleto y ropa simulada.
+        Inicia la cámara y muestra detecciones de pose con ropa superpuesta.
+        Permite cambiar de polera al presionar 'c' o al hacer clic con el mouse.
         """
         cap = cv2.VideoCapture(0)
         cv2.namedWindow('Espejo Inteligente', cv2.WINDOW_NORMAL)
@@ -84,7 +80,12 @@ class PoseController:
                 cv2.destroyAllWindows()
                 return
 
-        # Captura de video
+        def mouse_callback(event, x, y, flags, param):
+            if event == cv2.EVENT_LBUTTONDOWN:  # Cambiar polera al hacer clic izquierdo
+                self.change_polera()
+
+        cv2.setMouseCallback('Espejo Inteligente', mouse_callback)
+
         try:
             while cap.isOpened():
                 ret, frame = cap.read()
@@ -96,19 +97,23 @@ class PoseController:
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 landmarks = self.pose_model.process_frame(rgb_frame)  # Usar el modelo para procesar el cuadro
 
-                # Dibujar los puntos clave y la ropa
+                # Superponer la ropa si hay landmarks detectados
                 if landmarks:
-                    self.draw_landmarks_with_labels(frame, landmarks)
                     self.overlay_clothing(frame, landmarks)
 
                 # Mostrar el resultado
                 cv2.imshow('Espejo Inteligente', frame)
 
-                # Salir con la tecla 'q' o cerrar la ventana
-                if cv2.waitKey(1) & 0xFF == ord('q') or cv2.getWindowProperty('Espejo Inteligente', cv2.WND_PROP_VISIBLE) < 1:
+                # Detectar teclas para cerrar o cambiar de polera
+                key = cv2.waitKey(1)
+                if key == ord('q') or cv2.getWindowProperty('Espejo Inteligente', cv2.WND_PROP_VISIBLE) < 1:
                     break
+                elif key == ord('c'):  # Cambiar polera con la tecla 'c'
+                    self.change_polera()
         except Exception as e:
             print(f"Error inesperado: {e}")
         finally:
             cap.release()
             cv2.destroyAllWindows()
+
+
