@@ -141,8 +141,17 @@ class MainWindow(QMainWindow):
     def launch_espejo_script(self):
         from controllers.pose_controller import PoseController
 
-        self.pose_controller = PoseController()
+        # Construir la ruta de la imagen de la polera
+        project_root = os.path.dirname(os.path.dirname(__file__))  # Retrocede al directorio raíz del proyecto
+        polera_path = os.path.join(project_root, "assets", "clothes", "polera.png")
+
+        # Crear instancia de PoseController con la ruta de la polera
+        self.pose_controller = PoseController(polera_path)
+
+        # Mostrar mensaje de inicio
         self.camera_message_label.setText("Espejo iniciando...")
         self.camera_message_label.setVisible(True)
-        QTimer.singleShot(2000, lambda: self.camera_message_label.setVisible(False))
+        QTimer.singleShot(2000, lambda: self.camera_message_label.setVisible(True))
+
+        # Iniciar la cámara
         self.pose_controller.start_camera()
