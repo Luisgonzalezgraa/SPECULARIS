@@ -6,48 +6,98 @@ from models.pose_model import PoseModel  # Importar el modelo de poses
 
 
 class PoseController:
-    def __init__(self, polera_paths):
-        self.pose_model = PoseModel()  # Instanciar el modelo de pose
-        self.poleras = [cv2.imread(path, cv2.IMREAD_UNCHANGED) for path in polera_paths]  # Cargar las imágenes de ropa
-        self.current_polera_index = 0  # Índice actual de la polera a mostrar
+    def __init__(self, asset_paths):
+            """
+            Inicializa el controlador con las imágenes para cada categoría.
+            """
+            self.pose_model = PoseModel()  # Instanciar el modelo de pose
+            self.assets = {
+                "cabeza": [cv2.imread(path, cv2.IMREAD_UNCHANGED) for path in asset_paths.get("cabeza", [])],
+                "cuello": [cv2.imread(path, cv2.IMREAD_UNCHANGED) for path in asset_paths.get("cuello", [])],
+                "torso": [cv2.imread(path, cv2.IMREAD_UNCHANGED) for path in asset_paths.get("torso", [])],
+            }
+            self.current_indices = {"cabeza": 0, "cuello": 0, "torso": 0}  # Índices actuales de cada categoría
 
-    def change_polera(self):
+    def overlay_clothing(self, frame, landmarks, category):
         """
-        Cambia la imagen de la polera al siguiente elemento en la lista.
+        Superpone la ropa correspondiente a una categoría específica sobre la persona.
         """
-        self.current_polera_index = (self.current_polera_index + 1) % len(self.poleras)  # Circular
+        if landmarks and category in self.assets and self.assets[category]:
+            # Seleccionar el ítem actual de la categoría
+            current_item = self.assets[category][self.current_indices[category]]
 
-    def overlay_clothing(self, frame, landmarks):
-        """
-        Superpone la polera sobre el torso de la persona.
-        """
-        if landmarks:
             # Coordenadas de los puntos clave
             h, w, _ = frame.shape
             left_shoulder = landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_SHOULDER]
             right_shoulder = landmarks.landmark[mp.solutions.pose.PoseLandmark.RIGHT_SHOULDER]
             left_hip = landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_HIP]
+            
             nose = landmarks.landmark[mp.solutions.pose.PoseLandmark.NOSE]  # Referencia para el cuello
+            
+            ear_left = landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_EAR] # Referencia para la cabeza
+            ear_right = landmarks.landmark[mp.solutions.pose.PoseLandmark.RIGHT_EAR]
+            
+            mouth_right = landmarks.landmark[mp.solutions.pose.PoseLandmark.MOUTH_RIGHT]  # Referencia a la boca
+            mouth_left = landmarks.landmark[mp.solutions.pose.PoseLandmark.MOUTH_LEFT]  
 
             # Convertir coordenadas normalizadas a píxeles
             left_shoulder_px = (int(left_shoulder.x * w), int(left_shoulder.y * h))
             right_shoulder_px = (int(right_shoulder.x * w), int(right_shoulder.y * h))
             left_hip_px = (int(left_hip.x * w), int(left_hip.y * h))
             nose_px = (int(nose.x * w), int(nose.y * h))
+            ear_left_px = (int(ear_left.x * w), int(ear_left.y * h))
+            ear_right_px = (int(ear_right.x * w), int(ear_right.y * h))
+            mouth_right_px = (int(mouth_right.x * w), int(mouth_right.y * h))
+            mouth_left_px = (int(mouth_left.x * w), int(mouth_left.y * h))
 
-            # Calcular el ancho de la polera basado en los hombros y un margen
-            width = int(np.linalg.norm(np.array(right_shoulder_px) - np.array(left_shoulder_px))) + 120  # Margen extra
+            # Ajustar las posiciones y dimensiones según la categoría
+            if category == "torso":
+                # Calcular el ancho de la prenda basado en los hombros y un margen
+                width = int(np.linalg.norm(np.array(right_shoulder_px) - np.array(left_shoulder_px))) + 120
 
-            # Calcular el alto de la polera desde la nariz hasta la cadera
-            height = int(np.linalg.norm(np.array(left_hip_px) - np.array(nose_px))) + 20  # Margen extra
+                # Calcular la altura de la prenda desde el hombro izquierdo hasta la cadera izquierda
+                height = int(np.linalg.norm(np.array(left_hip_px) - np.array(left_shoulder_px))) + 85  # Margen extra
 
-            # Redimensionar la polera actual
-            resized_polera = cv2.resize(self.poleras[self.current_polera_index], (width, height))
+                x_min = min(left_shoulder_px[0], right_shoulder_px[0]) - 60  # Ajustar horizontalmente para centrar
 
-            # Superponer la polera en el torso
-            x_min = min(left_shoulder_px[0], right_shoulder_px[0]) - 60  # Ajustar horizontalmente para centrar
-            y_min = nose_px[1] + 20  # Comenzar desde el cuello
-            self.overlay_image(frame, resized_polera, x_min, y_min)
+                # La posición inicial vertical basada en los hombros
+                y_min = min(left_shoulder_px[1], right_shoulder_px[1]) - 45  # Margen para comenzar desde un poco arriba de los hombros
+
+            elif category == "cuello":
+
+                # Calcular el ancho del collar en función de la distancia entre los extremos de la boca
+                width = int(np.linalg.norm(np.array(mouth_right_px) - np.array(mouth_left_px)) * 3)  # Margen adicional
+
+                # Calcular la altura como una proporción del ancho
+                height = int(width * 1.0) 
+
+                # Centrar el collar horizontalmente en función de la nariz
+                x_min = int(nose_px[0] - width / 2)
+
+                # Calcular posición vertical en base al hombro
+                y_min = int( (left_shoulder_px[1] - nose_px[1]*0.24 )  ) 
+
+
+            elif category == "cabeza":
+                # Calcular el centro horizontal del rostro (entre las orejas)
+                center_x = (ear_left_px[0] + ear_right_px[0]) // 2
+
+                # Calcular el ancho del sombrero basado en la distancia entre las orejas
+                ear_distance = np.linalg.norm(np.array(ear_right_px) - np.array(ear_left_px))
+                width = int(ear_distance * 2.8)  # Margen adicional dinámico basado en la distancia
+
+                # Calcular la altura del sombrero como una proporción del ancho
+                height = int(width * 0.5)  # Relación típica de altura para un sombrero
+
+                # Posicionar el sombrero centrado respecto al rostro
+                x_min = center_x - width // 2  # Centrar horizontalmente
+                y_min = ear_left_px[1] - height  # Posicionar encima de la cabeza
+
+            # Redimensionar el ítem
+            resized_item = cv2.resize(current_item, (width, height))
+
+            # Superponer el ítem en el frame
+            self.overlay_image(frame, resized_item, x_min, y_min)
 
     def overlay_image(self, frame, overlay, x, y):
         """
@@ -61,13 +111,24 @@ class PoseController:
                 alpha = overlay[i, j, 3] / 255.0  # Canal alfa
                 frame[y + i, x + j] = alpha * overlay[i, j, :3] + (1 - alpha) * frame[y + i, x + j]
 
+    def change_item_in_category(self, category):
+        """
+        Cambia al siguiente ítem (ropa) dentro de una categoría específica.
+        """
+        if category in self.assets and self.assets[category]:
+            self.current_indices[category] = (self.current_indices[category] + 1) % len(self.assets[category])
+
+
     def start_camera(self):
         """
         Inicia la cámara y muestra detecciones de pose con ropa superpuesta.
-        Permite cambiar de polera al presionar 'c' o al hacer clic con el mouse.
+        Permite cambiar de ítems o categorías.
         """
         cap = cv2.VideoCapture(0)
         cv2.namedWindow('Espejo Inteligente', cv2.WINDOW_NORMAL)
+
+        # Categoría actual para el clic
+        self.current_category = "torso"
 
         # Mostrar el texto inicial "Espejo iniciando..."
         start_time = time.time()
@@ -81,8 +142,8 @@ class PoseController:
                 return
 
         def mouse_callback(event, x, y, flags, param):
-            if event == cv2.EVENT_LBUTTONDOWN:  # Cambiar polera al hacer clic izquierdo
-                self.change_polera()
+            if event == cv2.EVENT_LBUTTONDOWN:  # Cambiar prenda al hacer clic izquierdo
+                self.change_item_in_category(self.current_category)
 
         cv2.setMouseCallback('Espejo Inteligente', mouse_callback)
 
@@ -95,25 +156,27 @@ class PoseController:
 
                 # Convertir la imagen a RGB para Mediapipe
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                landmarks = self.pose_model.process_frame(rgb_frame)  # Usar el modelo para procesar el cuadro
+                landmarks = self.pose_model.process_frame(rgb_frame)
 
-                # Superponer la ropa si hay landmarks detectados
+                # Dibujar ropa según las categorías
                 if landmarks:
-                    self.overlay_clothing(frame, landmarks)
+                    self.overlay_clothing(frame, landmarks, self.current_category)
 
                 # Mostrar el resultado
                 cv2.imshow('Espejo Inteligente', frame)
 
-                # Detectar teclas para cerrar o cambiar de polera
+                # Detectar eventos para cambiar ropa o categorías
                 key = cv2.waitKey(1)
                 if key == ord('q') or cv2.getWindowProperty('Espejo Inteligente', cv2.WND_PROP_VISIBLE) < 1:
                     break
-                elif key == ord('c'):  # Cambiar polera con la tecla 'c'
-                    self.change_polera()
+                elif key == ord('1'):  # Cambiar categoría a "cabeza"
+                    self.current_category = "cabeza"
+                elif key == ord('2'):  # Cambiar categoría a "cuello"
+                    self.current_category = "cuello"
+                elif key == ord('3'):  # Cambiar categoría a "torso"
+                    self.current_category = "torso"
         except Exception as e:
             print(f"Error inesperado: {e}")
         finally:
             cap.release()
             cv2.destroyAllWindows()
-
-

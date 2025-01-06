@@ -141,14 +141,24 @@ class MainWindow(QMainWindow):
     def launch_espejo_script(self):
         from controllers.pose_controller import PoseController
         # Lista de rutas de imágenes de ropa
-        polera_paths = [
-            os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "clothes", "polera_negra.png"),
-            os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "clothes", "polera.png"),
-            os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "clothes", "poleron_azul.png")
-        ]
+        clothes_paths = {
+            "cabeza": [
+                "assets/clothes/cabeza/gorra_blanca.png",
+                "assets/clothes/cabeza/gorra_negra.png",
+            ],
+            "cuello": [
+                "assets/clothes/cuello/collar.png",
+                "assets/clothes/cuello/collar2.png",
+            ],
+            "torso": [
+                "assets/clothes/torso/polera_negra.png",
+                "assets/clothes/torso/polera.png",
+                "assets/clothes/torso/poleron_azul.png",
+            ],
+        }
 
         # Crear instancia de PoseController con la lista de rutas
-        self.pose_controller = PoseController(polera_paths)
+        self.pose_controller = PoseController(clothes_paths)
 
         # Mostrar mensaje de inicio
         self.camera_message_label.setText("Espejo iniciando...")
